@@ -1,0 +1,45 @@
+# Custom exclusions
+/Test
+/weekly_exercises
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment variables / secrets
+.env
+.env.local
+.env*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Output files
+job_analysis.json
+cv_match_results.txt
+
+# FAISS index files
+*.index
+faiss_index/

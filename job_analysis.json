@@ -1,0 +1,57 @@
+{
+  "job_title": "AI & Agent Engineer — Intern / Working Student (m/f/d)",
+  "company": "NOAVIA UG",
+  "location": "Berlin, Germany (Remote-first, anywhere in Germany)",
+  "seniority_level": "",
+  "experience_years": "",
+  "required_skills": [
+    "Python",
+    "LangChain",
+    "Qdrant"
+  ],
+  "nice_to_have_skills": [
+    "Docker",
+    "docker-compose",
+    "containerization",
+    "monitoring",
+    "PostgreSQL",
+    "Supabase",
+    "SQL",
+    "Linux command line",
+    "SSH",
+    "Bash basics",
+    "Git/GitHub",
+    "Qdrant",
+    "Chroma",
+    "Pinecone",
+    "Weaviate",
+    "MCP (Model Context Protocol)",
+    "multi-agent systems",
+    "Ollama/vLLM for local LLM deployments",
+    "n8n AI nodes and workflow orchestration",
+    "Prompt engineering and LLM evaluation frameworks",
+    "Conversational design / bot UX",
+    "OpenAI/Anthropic/Mistral function calling and tool use",
+    "Kubernetes basics",
+    "Terraform/Ansible",
+    "Cloud deployment experience (Hetzner, AWS, Azure, GCP)",
+    "React/Next.js for agent frontends",
+    "Microsoft Graph API",
+    "GitHub portfolio or documented projects"
+  ],
+  "key_responsibilities": [
+    "Develop RAG pipelines (embedding, chunking, retrieval, reranking) with Python, LangChain, and Qdrant",
+    "Build and optimize embedding strategies for German-language enterprise documents",
+    "Evaluate and optimize local LLMs (Ollama, Mistral, Qwen) for GDPR-compliant scenarios",
+    "Develop MCP servers and tool-use integrations for autonomous AI agents",
+    "Build n8n workflows as orchestration layer between agents and client systems",
+    "Contribute to the \"Living Brain\" — NOAVIA's internal multi-agent knowledge system",
+    "Systematically evaluate prompt quality, hallucination rates, and retrieval precision",
+    "Docker-based deployments on Hetzner: containerization, docker-compose, monitoring",
+    "Create and maintain playbooks and guidelines for agent development processes"
+  ],
+  "languages_required": [
+    "German B1-B2",
+    "English"
+  ]
+}
