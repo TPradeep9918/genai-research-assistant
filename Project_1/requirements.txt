@@ -1,0 +1,27 @@
+# Core LangChain packages (modern split architecture)
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langchain-ollama>=0.2.0
+langchain-huggingface>=0.1.0
+langchain-chroma>=0.1.4
+
+# Vector store
+chromadb>=0.5.0
+
+# Keyword retrieval
+rank_bm25>=0.2.2
+
+# Embeddings + reranking
+sentence-transformers>=3.0.0
+
+# Web loading
+beautifulsoup4>=4.12.0
+requests>=2.31.0
+
+# UI
+streamlit>=1.38.0
+
+# Evaluation
+ragas>=0.2.0
+datasets>=2.20.0
