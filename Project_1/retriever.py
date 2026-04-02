@@ -53,7 +53,11 @@ class HybridRerankedRetriever(BaseRetriever):
         ce_scores = self.cross_encoder.score(pairs)
         ranked = sorted(zip(ce_scores, candidates), key=lambda x: x[0], reverse=True)
 
-        return [doc for _, doc in ranked[: self.top_n]]
+        results = []
+        for score, doc in ranked[: self.top_n]:
+            doc.metadata["relevance_score"] = round(float(score), 4)
+            results.append(doc)
+        return results
 
 
 def build_retriever():

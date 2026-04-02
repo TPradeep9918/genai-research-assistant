@@ -1,87 +1,151 @@
-# evaluate.py — RAGAS evaluation for the RAG pipeline
+# evaluate.py — Multi-LLM RAGAS evaluation for the RAG pipeline
 # Run with:  python evaluate.py
 #
-# Measures three reference-free metrics:
+# Measures three reference-free metrics per LLM:
 #   faithfulness      — does the answer stay true to the retrieved context?
 #   answer_relevancy  — does the answer actually address the question?
 #   context_precision — are the retrieved chunks relevant to the question?
 #
-# No ground-truth answers required for these three metrics.
+# Compares multiple Ollama models side-by-side and prints a ranked table.
 
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_precision
-from chain import get_chain
+from langchain_ollama import ChatOllama
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
+from retriever import build_retriever
+from chain import CITATION_PROMPT, format_docs_with_citations
+
+
+# ── Models to compare ─────────────────────────────────────────────────────────
+# Add/remove any Ollama model you have pulled locally
+MODELS_TO_COMPARE = [
+    "llama3.2",
+    # "mistral",    # run: ollama pull mistral
+    # "gemma3:1b",  # run: ollama pull gemma3:1b
+]
 
 # ── Evaluation questions ──────────────────────────────────────────────────────
-# Choose questions that span different parts of the indexed docs
-
 EVAL_QUESTIONS = [
-    "What is LCEL and why should I use it instead of legacy chains?",
-    "How does RAG work in LangChain at a high level?",
-    "What is the difference between a retriever and a vector store?",
-    "How do I enable streaming responses in LangChain?",
-    "What embedding models does LangChain natively support?",
-    "What text splitters are available and when should I use each?",
-    "How do I add source citations to RAG answers?",
+    "What is the Transformer architecture and how does it differ from RNNs?",
+    "How does the scaled dot-product attention mechanism work?",
+    "What is multi-head attention and why is it used?",
+    "What is the purpose of positional encoding in the Transformer?",
+    "How does the encoder-decoder structure work in the Transformer?",
+    "What BLEU scores did the Transformer achieve on WMT translation tasks?",
+    "Why did the authors choose scaled dot-product over additive attention?",
 ]
 
 
-# ── Runner ────────────────────────────────────────────────────────────────────
+# ── Build chain for a given model ─────────────────────────────────────────────
 
-def run_evaluation():
-    print("\n  Loading RAG chain...")
-    chain, retriever = get_chain()
+def build_chain_for_model(retriever, model_name: str):
+    llm = ChatOllama(model=model_name, temperature=0)
+    chain = (
+        {
+            "context":  retriever | RunnableLambda(format_docs_with_citations),
+            "question": RunnablePassthrough(),
+        }
+        | CITATION_PROMPT
+        | llm
+        | StrOutputParser()
+    )
+    return chain
 
-    print(f"\n  Running {len(EVAL_QUESTIONS)} evaluation questions...\n")
+
+# ── Run RAGAS for one model ───────────────────────────────────────────────────
+
+def evaluate_model(model_name: str, retriever) -> dict:
+    print(f"\n{'='*55}")
+    print(f"  Evaluating model: {model_name}")
+    print(f"{'='*55}")
+
+    try:
+        chain = build_chain_for_model(retriever, model_name)
+    except Exception as e:
+        print(f"  Could not load {model_name}: {e}")
+        return None
 
     records = {
         "question":     [],
         "answer":       [],
         "contexts":     [],
-        "ground_truth": [],    # left empty — using reference-free metrics
+        "ground_truth": [],
     }
 
     for i, question in enumerate(EVAL_QUESTIONS, 1):
-        print(f"  [{i}/{len(EVAL_QUESTIONS)}] {question}")
-
-        docs   = retriever.invoke(question)
-        answer = chain.invoke(question)
+        print(f"  [{i}/{len(EVAL_QUESTIONS)}] {question[:60]}...")
+        try:
+            docs   = retriever.invoke(question)
+            answer = chain.invoke(question)
+        except Exception as e:
+            print(f"  Error on question {i}: {e}")
+            answer = ""
+            docs   = []
 
         records["question"].append(question)
         records["answer"].append(answer)
         records["contexts"].append([d.page_content for d in docs])
         records["ground_truth"].append("")
 
-    # ── Run RAGAS ─────────────────────────────────────────────────────────────
-    print("\n  Computing RAGAS metrics...")
-
+    print(f"\n  Computing RAGAS metrics for {model_name}...")
     dataset = Dataset.from_dict(records)
-
-    scores = evaluate(
+    scores  = evaluate(
         dataset,
-        metrics=[
-            faithfulness,
-            answer_relevancy,
-            context_precision,
-        ],
+        metrics=[faithfulness, answer_relevancy, context_precision],
+    )
+    return {
+        "faithfulness":      round(float(scores["faithfulness"]),      3),
+        "answer_relevancy":  round(float(scores["answer_relevancy"]),  3),
+        "context_precision": round(float(scores["context_precision"]), 3),
+    }
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def run_evaluation():
+    print("\n  Loading retriever (shared across all models)...")
+    retriever = build_retriever()
+
+    results = {}
+    for model in MODELS_TO_COMPARE:
+        scores = evaluate_model(model, retriever)
+        if scores:
+            results[model] = scores
+
+    # ── Print comparison table ────────────────────────────────────────────────
+    col = 18
+    print("\n\n" + "=" * 70)
+    print("  MULTI-LLM RAGAS COMPARISON")
+    print("=" * 70)
+    header = f"  {'Model':<{col}} {'Faithfulness':>14} {'Ans.Relevancy':>14} {'Ctx.Precision':>14}"
+    print(header)
+    print("-" * 70)
+
+    # Sort by average score descending
+    ranked = sorted(
+        results.items(),
+        key=lambda x: sum(x[1].values()) / 3,
+        reverse=True,
     )
 
-    # ── Print results ──────────────────────────────────────────────────────────
-    print("\n" + "="*50)
-    print("  RAGAS Evaluation Results")
-    print("="*50)
-    print(f"  Faithfulness       : {scores['faithfulness']:.3f}  (target > 0.80)")
-    print(f"  Answer relevancy   : {scores['answer_relevancy']:.3f}  (target > 0.80)")
-    print(f"  Context precision  : {scores['context_precision']:.3f}  (target > 0.75)")
-    print("="*50)
-    print("\n  Scores range 0.0 – 1.0.  Higher is better.")
-    print("  Low faithfulness = LLM hallucinating outside the retrieved context.")
-    print("  Low answer_relevancy = answer drifts off-topic.")
-    print("  Low context_precision = retriever returning irrelevant chunks.\n")
+    for rank, (model, s) in enumerate(ranked, 1):
+        avg = sum(s.values()) / 3
+        print(
+            f"  #{rank} {model:<{col-3}} "
+            f"{s['faithfulness']:>14.3f} "
+            f"{s['answer_relevancy']:>14.3f} "
+            f"{s['context_precision']:>14.3f}   avg={avg:.3f}"
+        )
 
-    return scores
+    print("-" * 70)
+    print("  Targets:           faithfulness > 0.80 | relevancy > 0.80 | precision > 0.75")
+    print("  Scores range 0.0 - 1.0.  Higher is better.")
+    print("=" * 70 + "\n")
+
+    return results
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

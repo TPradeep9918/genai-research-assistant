@@ -15,9 +15,8 @@ rank_bm25>=0.2.2
 # Embeddings + reranking
 sentence-transformers>=3.0.0
 
-# Web loading
-beautifulsoup4>=4.12.0
-requests>=2.31.0
+# PDF loading
+pypdf>=4.0.0
 
 # UI
 streamlit>=1.38.0
