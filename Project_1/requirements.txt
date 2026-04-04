@@ -24,3 +24,11 @@ streamlit>=1.38.0
 # Evaluation
 ragas>=0.2.0
 datasets>=2.20.0
+tiktoken>=0.7.0
+appdirs>=1.4.4
+diskcache>=5.6.3
+nest-asyncio>=1.6.0
+openai>=1.0.0
+langchain-openai>=0.1.0
+instructor>=1.0.0
+scikit-network>=0.32.0

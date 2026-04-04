@@ -11,12 +11,26 @@
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_precision
+from ragas.llms import LangchainLLMWrapper
+from ragas.embeddings import LangchainEmbeddingsWrapper
 from langchain_ollama import ChatOllama
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
 from retriever import build_retriever
 from chain import CITATION_PROMPT, format_docs_with_citations
+from config import EMBED_MODEL
+
+# ── Configure RAGAS to use local Ollama instead of OpenAI ────────────────────
+_ragas_llm = LangchainLLMWrapper(ChatOllama(model="llama3.2", temperature=0))
+_ragas_emb = LangchainEmbeddingsWrapper(
+    HuggingFaceEmbeddings(model_name=EMBED_MODEL, model_kwargs={"device": "cpu"})
+)
+faithfulness.llm           = _ragas_llm
+answer_relevancy.llm       = _ragas_llm
+answer_relevancy.embeddings = _ragas_emb
+context_precision.llm      = _ragas_llm
 
 
 # ── Models to compare ─────────────────────────────────────────────────────────
