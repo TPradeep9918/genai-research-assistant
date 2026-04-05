@@ -188,11 +188,19 @@ To add more models: add the model name to `AVAILABLE_MODELS` in `app.py` after r
 
 `evaluate.py` runs 7 benchmark questions across all 3 models without needing any external APIs:
 
-| Metric | Definition | Target |
-|---|---|---|
-| **Context Relevance** | Average cross-encoder score of retrieved chunks (normalised 0–1) | > 0.70 |
-| **Citation Rate** | % of answers that include at least one `[N]` citation | 100% |
-| **Grounded Rate** | % of answers that don't fall back to "docs don't cover this" | > 80% |
+| Model | Context Relevance | Citation Rate | Grounded Rate | Avg Score |
+|---|---|---|---|---|
+| llama3.2 | 0.838 | 100% | 100% | **0.946** |
+| mistral | 0.838 | 100% | 100% | **0.946** |
+| gemma3:1b | 0.838 | 100% | 100% | **0.946** |
+
+**Targets:** context relevance > 0.70 · citation rate = 100% · grounded rate > 80%
+
+| Metric | Definition |
+|---|---|
+| **Context Relevance** | Average cross-encoder score of retrieved chunks (sigmoid-normalised 0–1) |
+| **Citation Rate** | % of answers that include at least one `[N]` citation |
+| **Grounded Rate** | % of answers that don't fall back to "docs don't cover this" |
 
 ---
 
