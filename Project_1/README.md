@@ -233,9 +233,4 @@ This project was built to reflect real-world GenAI engineering practices:
 | Quantitative evaluation | Custom metrics without requiring OpenAI (`evaluate.py`) |
 | Local-first deployment | Fully offline via Ollama — production-ready privacy model |
 
----
 
-## Author
-
-Built by **Pradeep** as part of a GenAI research assistant portfolio project.
-Demonstrates production RAG techniques applicable to enterprise document Q&A, legal research tools, and internal knowledge base systems.
