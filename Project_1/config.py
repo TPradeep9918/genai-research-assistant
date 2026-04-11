@@ -1,4 +1,5 @@
 # config.py — central config for the entire RAG project
+import os
 from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────────────
@@ -12,6 +13,9 @@ EMBED_MODEL     = "sentence-transformers/all-mpnet-base-v2"
 CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 LLM_MODEL       = "llama3.2"
 
+# ── Ollama host (overridden by OLLAMA_HOST env var in Docker) ───────────────
+OLLAMA_HOST     = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
 # ── Chroma ──────────────────────────────────────────────────────────────────
 COLLECTION_NAME = "pdf_docs"
 
@@ -23,3 +27,9 @@ CHUNK_OVERLAP   = 80
 VECTOR_K        = 10   # candidates from ChromaDB
 BM25_K          = 10   # candidates from BM25
 RERANK_TOP_K    = 5    # chunks kept after cross-encoder reranking
+
+# ── AGENTIC AI config ────────────────────────────────────────────────────────
+# These values control the agent loop defined in agent.py.
+# AGENT_MAX_ITERATIONS caps how many tool calls the agent can make in one run
+# before LangGraph forces it to stop (prevents infinite loops).
+AGENT_MAX_ITERATIONS = 6
