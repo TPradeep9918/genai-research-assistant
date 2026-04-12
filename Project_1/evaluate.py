@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
 from retriever import build_retriever
 from chain import CITATION_PROMPT, format_docs_with_citations
+from config import OLLAMA_HOST
 
 
 # ── Models to compare ─────────────────────────────────────────────────────────
@@ -47,7 +48,7 @@ def sigmoid(x):
 
 
 def build_chain_for_model(retriever, model_name: str):
-    llm = ChatOllama(model=model_name, temperature=0)
+    llm = ChatOllama(model=model_name, temperature=0, base_url=OLLAMA_HOST)
     return (
         {
             "context":  retriever | RunnableLambda(format_docs_with_citations),

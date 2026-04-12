@@ -1,3 +1,6 @@
+# AGENTIC AI — LangGraph manages the agent reasoning loop (agent.py)
+langgraph>=0.2.0
+
 # Core LangChain packages (modern split architecture)
 langchain>=0.3.0
 langchain-core>=0.3.0

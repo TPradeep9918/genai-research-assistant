@@ -1,104 +1,75 @@
 # Research Paper Q&A — Production RAG System
 
-> Ask questions about any research paper in plain English and get cited, accurate answers — powered entirely by local LLMs. No internet. No API keys. No hallucinations.
-
-**Skills demonstrated:** Retrieval-Augmented Generation (RAG) · Large Language Models (LLMs) · Vector Databases · Hybrid Search · Cross-Encoder Reranking · Query Rewriting · LangChain · Streamlit · Ollama · Python
+A fully local, production-grade Retrieval-Augmented Generation (RAG) system that lets you query research papers in natural language. Built with hybrid retrieval, cross-encoder reranking, query rewriting, and a multi-LLM Streamlit UI — no cloud APIs required.
 
 ---
 
-## The Problem This Solves
+## What This Project Does
 
-Reading research papers is slow. Finding a specific answer buried across 15 pages is frustrating. Generic chatbots hallucinate when asked about papers they haven't seen.
-
-This project builds a Q&A system that:
-- Reads your actual PDF papers
-- Understands what you're asking even if you use informal language
-- Returns answers grounded **only** in your documents, with citations for every claim
-- Runs entirely on your local machine — no data leaves your computer
-
----
-
-## How It Works — Plain English
-
-Think of it as a smart research assistant with a 4-step process:
-
-**Step 1 — Understand your question**
-Your question goes to an LLM that rewrites it in precise academic language. So *"how does the scalar product work?"* becomes *"How does the scaled dot-product attention mechanism function?"* — much easier to search.
-
-**Step 2 — Find the right passages**
-The rewritten question searches your papers two ways simultaneously:
-- **Keyword search (BM25)** — finds passages with exact matching words
-- **Semantic search (ChromaDB)** — finds passages with similar meaning even if the words differ
-
-Both searches return 10 candidates each (20 total), then a fusion algorithm ranks the combined list.
-
-**Step 3 — Pick the best chunks**
-A cross-encoder AI model reads every candidate passage and the question together, scoring how relevant each one actually is. Only the top 5 most relevant passages move forward.
-
-**Step 4 — Generate a cited answer**
-The top 5 passages are shown to the LLM with a strict instruction: *answer only from these passages and cite every claim with [1], [2], etc.* If the papers don't cover the question, it says so honestly instead of making things up.
+You drop a PDF research paper into the `papers/` folder. The system indexes it into a dual retrieval store (vector + keyword). When you ask a question — even in casual language — the pipeline rewrites your query into domain-specific terminology, retrieves the most relevant chunks, reranks them, and generates a cited answer using a locally running LLM.
 
 ---
 
 ## Architecture
 
 ```
-Your Question
-      │
-      ▼
- Query Rewriter  ──────── LLM rephrases question into academic terminology
-      │
-      ▼
- Hybrid Retriever
-  ├── BM25 Keyword Search  ──── top 10 by exact word match
-  └── ChromaDB Vector Search ── top 10 by semantic similarity
-      │
-      ▼
- RRF Fusion  ──────────────── merges + deduplicates 20 candidates
-      │
-      ▼
- Cross-Encoder Reranker  ───── scores each passage against the question
-      │
-      ▼
- Top 5 Passages  (with relevance scores)
-      │
-      ▼
- Citation-Enforced LLM  ────── must cite [1][2] for every claim made
-      │
-      ▼
- Answer + Source Explorer (Streamlit UI)
+User Question
+     │
+     ▼
+Query Rewriter (LLM)          ← maps casual phrasing to paper terminology
+     │
+     ▼
+Hybrid Retriever
+ ├── BM25 (keyword)   ─── top 10 candidates
+ └── ChromaDB (vector) ── top 10 candidates
+     │
+     ▼
+RRF Fusion                    ← merges 20 candidates, removes duplicates
+     │
+     ▼
+Cross-Encoder Reranker        ← scores all candidates against the query
+     │
+     ▼
+Top 5 Chunks (with relevance scores)
+     │
+     ▼
+Citation-Enforced Prompt      ← LLM must cite [1][2] for every claim
+     │
+     ▼
+Local LLM via Ollama          ← llama3.2 / mistral / gemma3:1b
+     │
+     ▼
+Answer + Source Explorer (Streamlit UI)
 ```
 
 ---
 
 ## Key Features
 
-| Feature | What it does | Why it matters |
-|---|---|---|
-| **Query rewriting** | Rephrases your question before search | Fixes vocabulary mismatch between how users ask vs. how papers write |
-| **Hybrid retrieval** | BM25 + ChromaDB searched in parallel | Catches answers missed by either method alone |
-| **RRF fusion** | Merges both ranked lists into one | No duplicates; best of both search strategies |
-| **Cross-encoder reranking** | Re-scores all 20 candidates for true relevance | Eliminates irrelevant chunks that scored high on keyword overlap |
-| **Citation enforcement** | Every claim must have a `[N]` source reference | Prevents hallucination; every answer is traceable |
-| **Multi-LLM sidebar** | Switch models without restarting the app | Compare llama3.2, mistral, gemma3:1b side by side |
-| **Fully local** | No OpenAI, no cloud, no API keys | Private, offline, cost-free |
-| **Evaluation suite** | Quantitative metrics across all 3 models | Measures context relevance, citation rate, grounded response rate |
+| Feature | Detail |
+|---|---|
+| **Hybrid retrieval** | BM25 keyword search + ChromaDB vector search fused via Reciprocal Rank Fusion |
+| **Cross-encoder reranking** | `ms-marco-MiniLM-L-6-v2` rescores all candidates — picks top 5 by relevance |
+| **Query rewriting** | LLM rewrites casual questions into paper-specific terminology before retrieval |
+| **Citation enforcement** | Prompt forces the LLM to cite every claim with `[chunk_number]` — no hallucination |
+| **Multi-LLM support** | Switch between `llama3.2`, `mistral`, `gemma3:1b` from the sidebar — no restart |
+| **Fully local** | No OpenAI key, no cloud calls — runs entirely on your machine via Ollama |
+| **Evaluation suite** | Measures context relevance, citation rate, and grounded response rate across all 3 models |
 
 ---
 
 ## Tech Stack
 
-| Component | Technology | Purpose |
-|---|---|---|
-| LLM inference | Ollama (llama3.2 · mistral · gemma3:1b) | Runs LLMs locally |
-| Embeddings | `all-mpnet-base-v2` (768-dim) | Converts text to searchable vectors |
-| Vector store | ChromaDB (persistent) | Stores and searches embeddings |
-| Keyword search | BM25 via rank-bm25 | Exact/fuzzy keyword matching |
-| Reranker | `ms-marco-MiniLM-L-6-v2` | Cross-encoder relevance scoring |
-| Orchestration | LangChain LCEL | Wires all components into a pipeline |
-| UI | Streamlit | Interactive chat interface |
-| PDF parsing | PyPDF | Extracts text from research papers |
-| Language | Python 3.10+ | — |
+| Layer | Technology |
+|---|---|
+| LLM inference | [Ollama](https://ollama.com) — llama3.2, mistral, gemma3:1b |
+| Embeddings | `sentence-transformers/all-mpnet-base-v2` (768-dim, normalised) |
+| Vector store | ChromaDB (persistent on disk) |
+| Keyword store | BM25 via `rank-bm25` (pickled index) |
+| Reranker | `cross-encoder/ms-marco-MiniLM-L-6-v2` |
+| Orchestration | LangChain (LCEL pipeline) |
+| UI | Streamlit |
+| PDF parsing | PyPDF |
 
 ---
 
@@ -106,131 +77,113 @@ Your Question
 
 ```
 Project_1/
+├── papers/               ← drop your PDF files here
+├── chroma_db/            ← auto-generated vector store (persistent)
+├── bm25_index.pkl        ← auto-generated keyword index
 │
-├── papers/               ← PUT YOUR PDF FILES HERE
-├── chroma_db/            ← auto-created: stores vector embeddings
-├── bm25_index.pkl        ← auto-created: keyword search index
-│
-├── config.py             ← all settings in one place (chunk size, model names, k values)
-├── ingest.py             ← reads PDFs → creates chunks → builds ChromaDB + BM25
-├── retriever.py          ← hybrid search + RRF fusion + cross-encoder reranking
-├── chain.py              ← citation-enforced prompt template + document formatter
-├── app.py                ← Streamlit UI with query rewriter and model switcher
-└── evaluate.py           ← benchmarks all 3 models on 7 questions, prints score table
+├── config.py             ← all tunable parameters in one place
+├── ingest.py             ← PDF → chunks → ChromaDB + BM25
+├── retriever.py          ← HybridRerankedRetriever (BM25 + vector + cross-encoder)
+├── chain.py              ← citation-enforced prompt + doc formatter
+├── app.py                ← Streamlit chat UI with query rewriter
+└── evaluate.py           ← model comparison: context relevance, citation%, grounded%
 ```
 
 ---
 
-## Getting Started
+## Quickstart
 
-### Prerequisites
-- Python 3.10 or higher
-- [Ollama](https://ollama.com) installed and running (`ollama serve`)
+### 1. Prerequisites
+- Python 3.10+
+- [Ollama](https://ollama.com) installed and running
 
-### Step 1 — Install dependencies
+### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 2 — Pull the LLM models (one-time, ~7 GB total)
+### 3. Pull LLM models
 ```bash
-ollama pull llama3.2    # 2.0 GB
-ollama pull mistral     # 4.4 GB
-ollama pull gemma3:1b   # 815 MB
+ollama pull llama3.2
+ollama pull mistral
+ollama pull gemma3:1b
 ```
 
-### Step 3 — Add your research papers
-Drop any PDF files into the `papers/` folder. The project currently includes `NIPS-2017-attention-is-all-you-need-Paper.pdf` as an example.
+### 4. Add your PDFs
+Drop any research paper PDFs into the `papers/` folder.
 
-### Step 4 — Build the knowledge base
+### 5. Build the knowledge base
 ```bash
 python ingest.py
 ```
-This runs once and takes ~1–2 minutes. It chunks your PDFs into 500-token pieces, embeds them into ChromaDB, and builds the BM25 keyword index. Run `python ingest.py --force` to rebuild after adding new PDFs.
+This loads your PDFs, chunks them (500 tokens, 80 overlap), embeds with `all-mpnet-base-v2`, stores in ChromaDB, and builds a BM25 index. Run with `--force` to rebuild from scratch.
 
-### Step 5 — Start the app
+### 6. Launch the app
 ```bash
 python -m streamlit run app.py --server.fileWatcherType none
 ```
-Open **http://localhost:8501** in your browser.
+Open http://localhost:8501 in your browser.
 
-### Step 6 — (Optional) Run the evaluation
+### 7. (Optional) Run evaluation
 ```bash
 python evaluate.py
 ```
-Benchmarks all 3 models across 7 questions about the Transformer paper and prints a comparison table.
+Evaluates all 3 models across 7 benchmark questions and prints a comparison table.
 
 ---
 
-## Configuration
-
-All tunable parameters live in `config.py` — change them without touching any other file:
+## Configuration (`config.py`)
 
 ```python
-EMBED_MODEL     = "sentence-transformers/all-mpnet-base-v2"  # embedding model
-CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"    # reranker model
-LLM_MODEL       = "llama3.2"                                 # default LLM
+EMBED_MODEL     = "sentence-transformers/all-mpnet-base-v2"
+CROSS_ENCODER   = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+LLM_MODEL       = "llama3.2"
 
-CHUNK_SIZE      = 500   # characters per chunk
-CHUNK_OVERLAP   = 80    # overlap between adjacent chunks
+CHUNK_SIZE      = 500    # tokens per chunk
+CHUNK_OVERLAP   = 80     # overlap between chunks
 
-VECTOR_K        = 10    # how many candidates to fetch from ChromaDB
-BM25_K          = 10    # how many candidates to fetch from BM25
-RERANK_TOP_K    = 5     # how many chunks to keep after reranking
+VECTOR_K        = 10     # candidates from ChromaDB
+BM25_K          = 10     # candidates from BM25
+RERANK_TOP_K    = 5      # chunks kept after cross-encoder reranking
 ```
 
-To add more papers: drop PDFs in `papers/` and run `python ingest.py --force`.
-To add more models: add the model name to `AVAILABLE_MODELS` in `app.py` after running `ollama pull <model>`.
+---
+
+## How Retrieval Works
+
+1. **Ingestion** — PDFs are split into 500-token chunks with 80-token overlap. Each chunk is embedded into a 768-dimensional vector and stored in ChromaDB. A separate BM25 index is built for keyword matching.
+
+2. **Query rewriting** — Before retrieval, the LLM rephrases the user's question using precise academic terminology (e.g. "scalar product" → "scaled dot-product attention mechanism").
+
+3. **Hybrid retrieval** — The rewritten query runs against both BM25 (top 10) and ChromaDB (top 10), giving 20 candidate chunks.
+
+4. **RRF fusion** — Reciprocal Rank Fusion merges the two ranked lists using the formula `score += 1 / (60 + rank)`, deduplicating by content prefix.
+
+5. **Cross-encoder reranking** — All candidates are scored by the cross-encoder against the query. The top 5 by relevance score are kept.
+
+6. **Cited answer generation** — The top 5 chunks are formatted as a numbered context block. The LLM is instructed to cite every claim using `[chunk_number]` notation and to refuse answering if the context is insufficient.
 
 ---
 
 ## Evaluation Metrics
 
-`evaluate.py` runs 7 benchmark questions across all 3 models without needing any external APIs:
+The `evaluate.py` script runs 7 benchmark questions across all 3 models and measures:
 
-| Model | Context Relevance | Citation Rate | Grounded Rate | Avg Score |
-|---|---|---|---|---|
-| llama3.2 | 0.838 | 100% | 100% | **0.946** |
-| mistral | 0.838 | 100% | 100% | **0.946** |
-| gemma3:1b | 0.838 | 100% | 100% | **0.946** |
-
-**Targets:** context relevance > 0.70 · citation rate = 100% · grounded rate > 80%
-
-| Metric | Definition |
-|---|---|
-| **Context Relevance** | Average cross-encoder score of retrieved chunks (sigmoid-normalised 0–1) |
-| **Citation Rate** | % of answers that include at least one `[N]` citation |
-| **Grounded Rate** | % of answers that don't fall back to "docs don't cover this" |
+| Metric | What it measures | Target |
+|---|---|---|
+| **Context Relevance** | Avg cross-encoder score of retrieved chunks (sigmoid-normalised to 0–1) | > 0.70 |
+| **Citation Rate** | % of answers containing at least one `[N]` citation | 100% |
+| **Grounded Rate** | % of answers that don't fall back to "docs don't cover this" | > 80% |
 
 ---
 
-## Example Questions to Try
+## Technologies 
 
-These work well with the included "Attention Is All You Need" paper:
-
-- *"How does scaled dot-product attention work?"*
-- *"What is multi-head attention and why is it better than single-head?"*
-- *"What BLEU score did the Transformer achieve on WMT 2014 English-to-German?"*
-- *"Why did the authors use positional encoding instead of RNNs?"*
-- *"How does the encoder-decoder structure work?"*
-
----
-
-## Skills This Project Demonstrates
-
-This project was built to reflect real-world GenAI engineering practices:
-
-| Skill | Where it appears |
-|---|---|
-| RAG pipeline design | End-to-end: ingest → retrieve → rerank → generate |
-| Hybrid search | BM25 + dense vector retrieval with RRF fusion (`retriever.py`) |
-| Cross-encoder reranking | Two-stage retrieval for precision over recall (`retriever.py`) |
-| Query understanding | LLM-based query rewriting to bridge vocabulary gaps (`app.py`) |
-| Hallucination mitigation | Citation-enforced prompting — no unsourced claims (`chain.py`) |
-| LLM orchestration | LangChain LCEL pipelines with composable runnables (`chain.py`, `app.py`) |
-| Vector databases | ChromaDB with persistent storage and similarity search (`ingest.py`) |
-| Model-agnostic design | 3 LLMs selectable at runtime — zero code changes needed (`app.py`) |
-| Quantitative evaluation | Custom metrics without requiring OpenAI (`evaluate.py`) |
-| Local-first deployment | Fully offline via Ollama — production-ready privacy model |
-
-
+- **RAG pipeline from scratch** — not a tutorial copy; every component is wired together manually using LangChain LCEL
+- **Hybrid search** — most production RAG systems use hybrid retrieval; this implements both BM25 and dense vector search with RRF fusion
+- **Reranking** — cross-encoder reranking is a production technique that significantly improves answer quality over naive top-k retrieval
+- **Query understanding** — query rewriting with an LLM addresses the vocabulary mismatch problem between user language and document language
+- **Hallucination mitigation** — citation-enforced prompting is a real production guardrail, not just a prompt suggestion
+- **Multi-LLM architecture** — the system is model-agnostic; swapping models requires zero code changes
+- **Evaluation** — quantitative metrics on retrieval quality and answer grounding, not just manual spot-checking
+- **Fully local** — demonstrates understanding of privacy-first deployment and offline-capable systems
