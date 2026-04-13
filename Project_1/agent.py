@@ -17,14 +17,13 @@
 # ║  This "think → act → observe → think" pattern is called ReAct and is the  ║
 # ║  defining behaviour of an agentic AI system.                               ║
 # ║                                                                              ║
-# ║  Read the numbered markers ❶–❼ in order to follow the flow:               ║
-# ║    ❶ Global state shared with tools                                        ║
-# ║    ❷ Tool definitions  (what the agent CAN do)                             ║
-# ║    ❸ Agent State       (the agent's working memory)                        ║
-# ║    ❹ Agent Node        (the LLM reasoning / decision step)                 ║
-# ║    ❺ Routing           (loop or stop?)                                     ║
-# ║    ❻ Graph             (wiring the loop together)                          ║
-# ║    ❼ Public API        (called by app.py)                                  ║
+# ║  Read the numbered markers ❶–❻ in order to follow the flow:               ║
+# ║    ❶ Tool definitions  (what the agent CAN do, built as closures)          ║
+# ║    ❷ Agent State       (the agent's working memory)                        ║
+# ║    ❸ Agent Node        (the LLM reasoning / decision step)                 ║
+# ║    ❹ Routing           (loop or stop?)                                     ║
+# ║    ❺ Graph             (wiring the loop together)                          ║
+# ║    ❻ Public API        (called by app.py and evaluate.py)                  ║
 # ╚══════════════════════════════════════════════════════════════════════════════╝
 
 from typing import TypedDict, Annotated
@@ -40,140 +39,8 @@ from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langchain_ollama import ChatOllama
 
 from chain import format_docs_with_citations
-from config import OLLAMA_HOST, LLM_MODEL
+from config import OLLAMA_HOST, LLM_MODEL, AGENT_MAX_ITERATIONS
 
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❶ — GLOBAL RESOURCES SHARED ACROSS TOOLS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Tools are plain Python functions called by the LLM. The LLM can only pass
-# the declared string/int parameters — it cannot pass Python objects like
-# a retriever. So we store shared resources here at module level, then inject
-# them once via init_agent() before the loop starts.
-
-_retriever = None   # will be set to the HybridRerankedRetriever from retriever.py
-_model_name = LLM_MODEL  # which Ollama model the agent uses
-
-
-def init_agent(retriever, model_name: str = LLM_MODEL):
-    """Inject shared resources before calling run_agent()."""
-    global _retriever, _model_name
-    _retriever = retriever
-    _model_name = model_name
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❷ — TOOL DEFINITIONS
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# A "tool" is a regular Python function decorated with @tool.
-# The LLM reads the function name + docstring to know WHEN to call it.
-# The LLM reads the parameter names to know HOW to call it.
-# The agent can call zero, one, or many tools per reasoning turn — its choice.
-#
-# These three tools give the agent three different strategies:
-#   • rewrite_query   — improve the query before searching
-#   • search_papers   — retrieve specific passages (the same retriever as RAG)
-#   • get_paper_summary — broad overview of a topic
-
-
-@tool
-def rewrite_query(question: str) -> str:
-    """
-    Rewrite a casual or vague question into precise academic terminology.
-
-    Use this FIRST when the user's question uses everyday language that may
-    not match the vocabulary used in the research papers.
-    Example: "how does attention work?" → "scaled dot-product attention mechanism"
-    """
-    llm = ChatOllama(model=_model_name, temperature=0, base_url=OLLAMA_HOST)
-    prompt = (
-        "You are an expert in machine learning and NLP research. "
-        "Rewrite the following question using precise academic terminology "
-        "that would appear in research papers. "
-        "Output ONLY the rewritten question, nothing else.\n\n"
-        f"Original question: {question}"
-    )
-    response = llm.invoke(prompt)
-    return response.content.strip()
-
-
-@tool
-def search_papers(query: str) -> str:
-    """
-    Search the local research paper knowledge base for information on a topic.
-
-    Use this when you need specific facts, quotes, or technical details from
-    the indexed papers. Returns numbered context chunks with source citations.
-    You may call this multiple times with different queries if needed.
-    """
-    if _retriever is None:
-        return "Error: retriever not initialised. Call init_agent() first."
-    docs = _retriever.invoke(query)
-    if not docs:
-        return "No relevant passages found for this query. Try a different query."
-    return format_docs_with_citations(docs)
-
-
-@tool
-def get_paper_summary(topic: str) -> str:
-    """
-    Retrieve and summarise what the indexed papers say about a broad topic.
-
-    Use this for high-level overviews rather than specific facts.
-    Best for 'what is X?' or 'explain X' style questions.
-    """
-    if _retriever is None:
-        return "Error: retriever not initialised."
-    docs = _retriever.invoke(topic)
-    if not docs:
-        return f"No content found about '{topic}' in the papers."
-
-    context = format_docs_with_citations(docs)
-    llm = ChatOllama(model=_model_name, temperature=0, base_url=OLLAMA_HOST)
-    prompt = (
-        f"Summarise what the following research paper excerpts say about: {topic}\n\n"
-        f"{context}\n\n"
-        "Write a concise 2–3 sentence summary. "
-        "Cite every claim with chunk numbers like [1] or [2][3]."
-    )
-    response = llm.invoke(prompt)
-    return response.content.strip()
-
-
-# All tools in one list — passed to both the LLM (so it knows they exist)
-# and to ToolNode (so it can execute them).
-AGENT_TOOLS = [rewrite_query, search_papers, get_paper_summary]
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❸ — AGENT STATE (the agent's working memory)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# Every node in the graph reads from and writes to this shared state dict.
-# `messages` uses LangGraph's add_messages reducer, which APPENDS new messages
-# rather than replacing the whole list — so the full conversation is preserved
-# across every iteration of the loop.
-
-class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]
-
-
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❹ — AGENT NODE (the LLM reasoning / decision step)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# This node runs the LLM on every iteration of the loop.
-# The LLM sees the full message history (question + all previous tool results)
-# and makes one of two decisions:
-#
-#   Decision A → Call a tool
-#       Returns an AIMessage that contains `tool_calls` (structured JSON
-#       saying which tool to run and with what arguments). The LLM does NOT
-#       run the tool itself — it just declares its intent.
-#
-#   Decision B → Give a final answer
-#       Returns an AIMessage with plain text content and no tool_calls.
-#       The loop then ends.
-#
-# This decision-making is what separates an agent from a standard RAG chain.
 
 # System prompt that tells the LLM its role and strategy
 _SYSTEM_PROMPT = """You are an expert research assistant with access to a local knowledge base of research papers.
@@ -194,61 +61,109 @@ Strategy:
 Never invent information. Every claim must be supported by retrieved context."""
 
 
-def agent_node(state: AgentState) -> AgentState:
-    """
-    AGENTIC AI ❹ — Agent Node.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# AGENTIC AI ❷ — AGENT STATE (the agent's working memory)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Every node in the graph reads from and writes to this shared state dict.
+# `messages` uses LangGraph's add_messages reducer, which APPENDS new messages
+# rather than replacing the whole list — so the full conversation is preserved
+# across every iteration of the loop.
 
-    Runs the LLM with tool-calling enabled. The LLM decides whether
-    to call a tool (continue looping) or produce a final answer (stop).
-    """
-    llm = ChatOllama(model=_model_name, temperature=0, base_url=OLLAMA_HOST)
-
-    # bind_tools() is the key call that gives the LLM awareness of the tools.
-    # Without it, the LLM can only generate plain text.
-    # With it, it can output structured tool_call instructions.
-    llm_with_tools = llm.bind_tools(AGENT_TOOLS)
-
-    # Prepend system prompt on the first call (when no SystemMessage is present yet)
-    messages = state["messages"]
-    if not any(isinstance(m, SystemMessage) for m in messages):
-        messages = [SystemMessage(content=_SYSTEM_PROMPT)] + messages
-
-    response = llm_with_tools.invoke(messages)
-    return {"messages": [response]}
+class AgentState(TypedDict):
+    messages: Annotated[list, add_messages]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❺ — ROUTING (loop or stop?)
+# AGENTIC AI ❶ — TOOL FACTORY
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# After every agent_node call, this function inspects the last message:
-#   • Has tool_calls  → the LLM wants to use a tool → return "tools" (keep looping)
-#   • No tool_calls   → the LLM wrote a final answer → return "end" (stop)
+# Tools are created as closures inside build_agent_graph() so each invocation
+# of run_agent() gets its own isolated set of tools bound to the caller's
+# retriever and model_name. This eliminates the module-level global state that
+# made the original design thread-unsafe under concurrent Streamlit requests.
 #
-# This conditional routing IS the agent loop. Without it you'd have a
-# straight-line pipeline just like the standard RAG chain.
+# retrieved_docs is a mutable list (closure-captured) that tools write into,
+# letting run_agent() return the last retrieved docs for source display in the UI.
 
-def should_continue(state: AgentState) -> str:
+def _make_tools(retriever, model_name: str, retrieved_docs: list):
     """
-    AGENTIC AI ❺ — Routing function (conditional edge).
+    Return (tools_list, tool_node) bound to the given retriever and model.
 
-    Returns "tools" to continue the loop, or "end" to stop.
+    retrieved_docs: caller-provided mutable list; search_papers writes the last
+                    retrieved Document objects into it so the UI can show sources.
     """
-    last_message = state["messages"][-1]
 
-    # AIMessage.tool_calls is populated when the LLM wants to invoke a tool
-    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        return "tools"   # → loop: execute the requested tool
+    @tool
+    def rewrite_query(question: str) -> str:
+        """
+        Rewrite a casual or vague question into precise academic terminology.
 
-    return "end"         # → stop: LLM produced a final text answer
+        Use this FIRST when the user's question uses everyday language that may
+        not match the vocabulary used in the research papers.
+        Example: "how does attention work?" → "scaled dot-product attention mechanism"
+        """
+        llm    = ChatOllama(model=model_name, temperature=0, base_url=OLLAMA_HOST)
+        prompt = (
+            "You are an expert in machine learning and NLP research. "
+            "Rewrite the following question using precise academic terminology "
+            "that would appear in research papers. "
+            "Output ONLY the rewritten question, nothing else.\n\n"
+            f"Original question: {question}"
+        )
+        response = llm.invoke(prompt)
+        return response.content.strip()
+
+    @tool
+    def search_papers(query: str) -> str:
+        """
+        Search the local research paper knowledge base for information on a topic.
+
+        Use this when you need specific facts, quotes, or technical details from
+        the indexed papers. Returns numbered context chunks with source citations.
+        You may call this multiple times with different queries if needed.
+        """
+        docs = retriever.invoke(query)
+        if not docs:
+            return "No relevant passages found for this query. Try a different query."
+        # Capture docs so run_agent() can surface them as sources in the UI
+        retrieved_docs.clear()
+        retrieved_docs.extend(docs)
+        return format_docs_with_citations(docs)
+
+    @tool
+    def get_paper_summary(topic: str) -> str:
+        """
+        Retrieve and summarise what the indexed papers say about a broad topic.
+
+        Use this for high-level overviews rather than specific facts.
+        Best for 'what is X?' or 'explain X' style questions.
+        """
+        docs = retriever.invoke(topic)
+        if not docs:
+            return f"No content found about '{topic}' in the papers."
+        retrieved_docs.clear()
+        retrieved_docs.extend(docs)
+        context = format_docs_with_citations(docs)
+        llm    = ChatOllama(model=model_name, temperature=0, base_url=OLLAMA_HOST)
+        prompt = (
+            f"Summarise what the following research paper excerpts say about: {topic}\n\n"
+            f"{context}\n\n"
+            "Write a concise 2–3 sentence summary. "
+            "Cite every claim with chunk numbers like [1] or [2][3]."
+        )
+        response = llm.invoke(prompt)
+        return response.content.strip()
+
+    agent_tools = [rewrite_query, search_papers, get_paper_summary]
+    return agent_tools
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❻ — GRAPH CONSTRUCTION (wiring the loop together)
+# AGENTIC AI ❺ — GRAPH CONSTRUCTION (wiring the loop together)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # StateGraph defines the nodes and edges of the agent loop.
 #
 #   Nodes:
-#     "agent" — runs the LLM  (agent_node above)
+#     "agent" — runs the LLM  (agent_node)
 #     "tools" — executes the tool the LLM requested  (LangGraph's ToolNode)
 #
 #   Edges:
@@ -257,58 +172,64 @@ def should_continue(state: AgentState) -> str:
 #     "agent" → should_continue() → END         (if LLM gave a final answer)
 #     "tools" → "agent"                         (always loop back after a tool)
 #
-#   Visual flow:
-#
-#     START
-#       ↓
-#     [agent]  ←────────────────────────────┐
-#       ↓                                   │
-#     should_continue()                     │
-#       ├── "tools" ──→ [tools] ────────────┘   (loop back for next reasoning step)
-#       └── "end"   ──→ END                      (final answer reached)
+#   recursion_limit caps the total number of node visits so the loop cannot run
+#   forever. Each question→tool round-trip visits 2 nodes (agent + tools), so
+#   the limit is AGENT_MAX_ITERATIONS × 2.
 
-def build_agent_graph():
+def build_agent_graph(retriever, model_name: str, retrieved_docs: list):
     """
-    AGENTIC AI ❻ — Graph builder.
+    AGENTIC AI ❺ — Graph builder.
 
     Constructs and compiles the LangGraph StateGraph that implements the
-    reasoning loop. Returns a compiled graph ready to call .invoke() on.
+    reasoning loop. Tools are built as closures bound to retriever/model_name,
+    making each call fully thread-safe.
     """
+    agent_tools = _make_tools(retriever, model_name, retrieved_docs)
+
+    # ── ❸ Agent Node ──────────────────────────────────────────────────────────
+    # Runs the LLM on every iteration. The LLM decides whether to call a tool
+    # (continue looping) or produce a final answer (stop).
+    def agent_node(state: AgentState) -> AgentState:
+        llm            = ChatOllama(model=model_name, temperature=0, base_url=OLLAMA_HOST)
+        llm_with_tools = llm.bind_tools(agent_tools)
+        messages       = state["messages"]
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages = [SystemMessage(content=_SYSTEM_PROMPT)] + messages
+        response = llm_with_tools.invoke(messages)
+        return {"messages": [response]}
+
+    # ── ❹ Routing ─────────────────────────────────────────────────────────────
+    # After every agent_node call, inspect the last message:
+    #   has tool_calls → return "tools"  (keep looping)
+    #   no  tool_calls → return "end"    (final answer)
+    def should_continue(state: AgentState) -> str:
+        last = state["messages"][-1]
+        if hasattr(last, "tool_calls") and last.tool_calls:
+            return "tools"
+        return "end"
+
     graph = StateGraph(AgentState)
-
-    # Register the two nodes
     graph.add_node("agent", agent_node)
-    graph.add_node("tools", ToolNode(AGENT_TOOLS))  # ToolNode auto-dispatches to the right tool
-
-    # Entry point — always start at the agent (LLM reasoning) node
+    graph.add_node("tools", ToolNode(agent_tools))
     graph.set_entry_point("agent")
-
-    # Conditional edge after "agent": call should_continue() to decide next step
     graph.add_conditional_edges(
         "agent",
         should_continue,
-        {
-            "tools": "tools",   # LLM requested a tool → execute it
-            "end":   END,       # LLM wrote final answer → stop
-        },
+        {"tools": "tools", "end": END},
     )
-
-    # Unconditional edge after "tools": always return to agent for next reasoning step
     graph.add_edge("tools", "agent")
 
-    return graph.compile()
+    # recursion_limit enforces AGENT_MAX_ITERATIONS (each round-trip = 2 nodes)
+    return graph.compile(recursion_limit=AGENT_MAX_ITERATIONS * 2)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# AGENTIC AI ❼ — PUBLIC API (called by app.py)
+# AGENTIC AI ❻ — PUBLIC API (called by app.py and evaluate.py)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# This is the only function app.py needs to call.
-# It runs the full agent loop and returns the final answer plus a human-readable
-# trace of every tool call the agent made along the way.
 
 def run_agent(question: str, model_name: str, retriever) -> dict:
     """
-    AGENTIC AI ❼ — Main entry point.
+    AGENTIC AI ❻ — Main entry point.
 
     Runs the agent reasoning loop for a single user question.
 
@@ -319,34 +240,28 @@ def run_agent(question: str, model_name: str, retriever) -> dict:
 
     Returns a dict:
         {
-            "answer": str,       # the agent's final answer text
-            "steps":  list[str], # trace of tool calls made (shown in the UI)
+            "answer": str,         # the agent's final answer text
+            "steps":  list[str],   # trace of tool calls made (shown in the UI)
+            "docs":   list[Document],  # last set of retrieved docs (for source display)
         }
     """
-    # ❶ Inject shared resources so tools can access retriever + model
-    init_agent(retriever, model_name)
+    retrieved_docs: list = []
+    graph = build_agent_graph(retriever, model_name, retrieved_docs)
 
-    # ❻ Build the compiled graph (lightweight — just wires nodes together)
-    graph = build_agent_graph()
-
-    # Run the loop — LangGraph handles the iteration until should_continue() → "end"
     final_state = graph.invoke({"messages": [HumanMessage(content=question)]})
 
-    # Extract final answer and step trace from the message history
     answer = ""
-    steps = []
+    steps: list[str] = []
 
     for message in final_state["messages"]:
         if isinstance(message, AIMessage):
             if hasattr(message, "tool_calls") and message.tool_calls:
-                # Intermediate step — record which tool was called and with what
                 for tc in message.tool_calls:
                     tool_name = tc.get("name", "unknown_tool")
                     tool_args = tc.get("args", {})
-                    arg_str = ", ".join(f'{k}="{v}"' for k, v in tool_args.items())
+                    arg_str   = ", ".join(f'{k}="{v}"' for k, v in tool_args.items())
                     steps.append(f"`{tool_name}({arg_str})`")
             elif message.content:
-                # Final answer — AIMessage with text and no tool_calls
                 answer = message.content
 
-    return {"answer": answer, "steps": steps}
+    return {"answer": answer, "steps": steps, "docs": retrieved_docs}

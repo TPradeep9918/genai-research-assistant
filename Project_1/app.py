@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 
 from retriever import build_retriever
 from chain import CITATION_PROMPT, format_docs_with_citations
-from config import OLLAMA_HOST
+from config import OLLAMA_HOST, AVAILABLE_MODELS
 
 # AGENTIC AI — import the agent entry point from agent.py
 # run_agent() replaces chain.invoke() when the user picks "Agentic Mode"
@@ -31,8 +31,6 @@ st.caption(
 st.divider()
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
-
-AVAILABLE_MODELS = ["llama3.2", "mistral", "gemma3:1b"]
 
 with st.sidebar:
     st.header("Pipeline")
